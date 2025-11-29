@@ -28,7 +28,7 @@ from src.common.utils import load_config
 from src.ingest.parse_commoncrawl import CommonCrawlParser
 from src.ingest.parse_abr import ABRParser
 from src.ingest.download_commoncrawl import download_wet_files
-from src.ingest.download_abr import create_sample_abr_data
+from src.ingest.download_abr import create_sample_abr_data, download_abr_bulk
 from src.transform.clean_commoncrawl import clean_commoncrawl_data
 from src.transform.clean_abr import clean_abr_data
 from src.transform.entity_match import match_companies
@@ -231,7 +231,7 @@ class ETLPipeline:
             
             if not skip_download:
                 wet_files = download_wet_files(
-                    crawl_id=cc_config.get('crawl_id', 'CC-MAIN-2024-18'),
+                    crawl_id=cc_config.get('crawl_id', 'CC-MAIN-2025-43'),
                     max_files=cc_config.get('max_files', 2),
                     partial=True
                 )
@@ -255,15 +255,37 @@ class ETLPipeline:
         # Extract ABR data
         logger.info("Extracting ABR data...")
         
-        # Create sample ABR data
-        Path('data/raw/abr').mkdir(parents=True, exist_ok=True)
-        sample_file = create_sample_abr_data(
-            output_path="data/raw/abr/sample_abr.xml",
-            num_records=max_records or 500
-        )
-        
-        records = list(self.abr_parser.parse_file(sample_file, max_records))
-        self.abr_data = pd.DataFrame([r.to_dict() for r in records])
+        if use_sample_data:
+            # Create sample ABR data for testing
+            Path('data/raw/abr').mkdir(parents=True, exist_ok=True)
+            abr_file = create_sample_abr_data(
+                output_path="data/raw/abr/sample_abr.xml",
+                num_records=max_records or 500
+            )
+            records = list(self.abr_parser.parse_file(abr_file, max_records))
+            self.abr_data = pd.DataFrame([r.to_dict() for r in records])
+        else:
+            abr_config = self.config.get('paths', {}).get('abr', {})
+            
+            if not skip_download:
+                xml_files = download_abr_bulk(
+                    output_dir=abr_config.get('output_path', 'data/raw/abr'),
+                    urls=abr_config.get('urls')
+                )
+            else:
+                abr_dir = Path(abr_config.get('output_path', 'data/raw/abr'))
+                xml_files = list(abr_dir.glob('*.xml'))
+            
+            records = []
+            for xml_file in xml_files:
+                for entity in self.abr_parser.parse_file(str(xml_file), max_records):
+                    records.append(entity.to_dict())
+                    if max_records and len(records) >= max_records:
+                        break
+                if max_records and len(records) >= max_records:
+                    break
+            
+            self.abr_data = pd.DataFrame(records)
         
         logger.info(f"Extracted {len(self.abr_data)} ABR records")
     
@@ -378,7 +400,7 @@ def main():
     parser = argparse.ArgumentParser(description='Australia Company ETL Pipeline')
     parser.add_argument('--config', default='config/pipeline_config.yaml',
                         help='Path to configuration file')
-    parser.add_argument('--sample', action='store_true', default=True,
+    parser.add_argument('--sample', action='store_true', default=False,
                         help='Use sample data for testing')
     parser.add_argument('--llm', action='store_true',
                         help='Enable LLM-based matching')

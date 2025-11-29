@@ -401,12 +401,12 @@ python -c "
 from src.ingest.download_commoncrawl import download_wet_files, get_wet_paths
 
 # Get list of WET file paths
-paths = get_wet_paths(crawl_id='CC-MAIN-2025-10', limit=50)
+paths = get_wet_paths(crawl_id='CC-MAIN-2025-43', limit=50)
 print(f'Found {len(paths)} WET files')
 
 # Download WET files (this will take time)
 files = download_wet_files(
-    crawl_id='CC-MAIN-2025-10',
+    crawl_id='CC-MAIN-2025-43',
     output_dir='data/raw/commoncrawl',
     max_files=50,  # Adjust based on needs (each file ~300MB)
     partial=False  # Full files for production
@@ -435,10 +435,7 @@ print('Created sample ABR data with 100,000 records')
 
 ```bash
 # Run full ETL pipeline with all data
-python src/pipeline.py \
-    --config config/pipeline_config.yaml \
-    --max-records 200000 \
-    --llm
+python src/pipeline.py  --config config/pipeline_config.yaml --max-records 200000 --llm
 
 # Monitor progress in real-time
 tail -f logs/pipeline.log

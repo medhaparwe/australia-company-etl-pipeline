@@ -299,6 +299,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO d
 -- Enable RLS on sensitive tables
 ALTER TABLE entity_match_results ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies before creating (idempotent)
+DROP POLICY IF EXISTS analyst_view_policy ON entity_match_results;
+DROP POLICY IF EXISTS etl_full_access ON entity_match_results;
+
 -- Policy: Analysts can only see high-confidence matches
 CREATE POLICY analyst_view_policy ON entity_match_results
     FOR SELECT
