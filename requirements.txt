@@ -1,0 +1,50 @@
+# Core Data Processing
+pyspark>=3.5.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# HTTP & Web
+requests>=2.31.0
+urllib3>=2.0.0
+warcio>=1.7.4
+
+# XML Parsing
+lxml>=4.9.0
+beautifulsoup4>=4.12.0
+
+# String Matching
+rapidfuzz>=3.5.0
+python-Levenshtein>=0.23.0
+textdistance>=4.5.0
+
+# Database
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.0
+
+# dbt (Data Build Tool)
+dbt-postgres>=1.7.0
+
+# LLM Integration
+openai>=1.12.0
+tiktoken>=0.5.0
+
+# Configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+
+# API (optional)
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
+# Logging & Monitoring
+loguru>=0.7.0
+tqdm>=4.66.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Jupyter Notebooks
+jupyter>=1.0.0
+ipykernel>=6.28.0
+

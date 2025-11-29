@@ -1,0 +1,111 @@
+# Australia Company ETL Pipeline Configuration
+
+# Data Source Paths
+paths:
+  # Common Crawl settings
+  commoncrawl:
+    crawl_id: "CC-MAIN-2025-10"
+    base_url: "https://data.commoncrawl.org/crawl-data"
+    wet_index_url: "https://data.commoncrawl.org/crawl-data/CC-MAIN-2025-10/wet.paths.gz"
+    max_files: 10  # Limit for testing
+    output_path: "data/processed/commoncrawl"
+    
+  # ABR (Australian Business Register) settings
+  abr:
+    xml_folder: "data/raw/abr"
+    output_path: "data/processed/abr"
+    
+  # Output paths
+  output:
+    matched_records: "data/output/matched_records.parquet"
+    unified_companies: "data/output/unified_companies.parquet"
+
+# PostgreSQL Database Configuration
+postgres:
+  host: "localhost"
+  port: 5432
+  database: "companydb"
+  user: "postgres"
+  password: "postgres123"
+  
+  # Table names
+  tables:
+    web_companies: "web_companies"
+    abr_entities: "abr_entities"
+    match_results: "entity_match_results"
+    unified: "unified_companies"
+
+# Entity Matching Configuration
+matching:
+  # Blocking configuration (reduce comparison space)
+  blocking:
+    enabled: true
+    key_length: 4  # First N characters of normalized name
+    
+  # Fuzzy matching thresholds
+  fuzzy:
+    algorithm: "token_sort_ratio"  # Options: token_sort_ratio, jaro_winkler, levenshtein
+    threshold: 0.75  # Minimum score to consider a match
+    
+  # LLM-based matching
+  llm:
+    enabled: true
+    model: "gpt-4o-mini"
+    min_score_for_llm: 0.60  # Only use LLM for scores between 0.60-0.85
+    max_score_for_llm: 0.85
+    batch_size: 50  # Process LLM calls in batches
+    
+  # Final score calculation
+  weights:
+    fuzzy: 0.70
+    llm: 0.30
+    
+  # Match decision threshold
+  final_threshold: 0.75
+
+# Spark Configuration
+spark:
+  app_name: "AustraliaCompanyETL"
+  master: "local[*]"
+  driver_memory: "4g"
+  executor_memory: "4g"
+  shuffle_partitions: 200
+
+# Processing Configuration
+processing:
+  # Australian domain filter
+  domain_filter: ".au"
+  
+  # Company name patterns to remove during normalization
+  stopwords:
+    - "PTY"
+    - "LTD"
+    - "LIMITED"
+    - "PROPRIETARY"
+    - "AUSTRALIA"
+    - "AUSTRALIAN"
+    - "HOLDINGS"
+    - "GROUP"
+    - "SERVICES"
+    - "CORPORATION"
+    - "CORP"
+    - "INC"
+    - "CO"
+    
+  # State code mapping
+  states:
+    - "NSW"
+    - "VIC"
+    - "QLD"
+    - "SA"
+    - "WA"
+    - "TAS"
+    - "NT"
+    - "ACT"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/pipeline.log"
+

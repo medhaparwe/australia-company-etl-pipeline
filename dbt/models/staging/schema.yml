@@ -1,0 +1,77 @@
+version: 2
+
+models:
+  - name: stg_web_companies
+    description: "Staged and cleaned Common Crawl web companies"
+    columns:
+      - name: id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      
+      - name: url
+        description: "Website URL"
+        tests:
+          - not_null
+      
+      - name: company_name
+        description: "Extracted company name"
+        tests:
+          - not_null
+      
+      - name: normalized_name
+        description: "Normalized name for matching"
+        tests:
+          - not_null
+      
+      - name: block_key
+        description: "Blocking key (first 4 chars)"
+        tests:
+          - not_null
+      
+      - name: is_valid_name
+        description: "Name validation flag"
+        tests:
+          - accepted_values:
+              values: [true, false]
+  
+  - name: stg_abr_entities
+    description: "Staged and validated ABR entities"
+    columns:
+      - name: abn
+        description: "Australian Business Number"
+        tests:
+          - unique
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 10000000000
+              max_value: 99999999999
+              config:
+                severity: warn
+      
+      - name: entity_name
+        description: "Legal entity name"
+        tests:
+          - not_null
+      
+      - name: entity_status
+        description: "Active or Cancelled"
+        tests:
+          - accepted_values:
+              values: ['Active', 'Cancelled']
+      
+      - name: state
+        description: "Australian state code"
+        tests:
+          - accepted_values:
+              values: ['NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT']
+              config:
+                where: "state IS NOT NULL"
+      
+      - name: is_valid_abn
+        description: "ABN validation flag"
+        tests:
+          - accepted_values:
+              values: [true, false]
+

@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: dim_companies
+    description: "Unified company dimension table (Golden Record)"
+    columns:
+      - name: abn
+        description: "Australian Business Number - Primary Key"
+        tests:
+          - unique
+          - not_null
+      
+      - name: canonical_name
+        description: "Official company name (from ABR)"
+        tests:
+          - not_null
+      
+      - name: data_source
+        description: "Source of data: MERGED, WEB_ONLY, ABR_ONLY"
+        tests:
+          - accepted_values:
+              values: ['MERGED', 'WEB_ONLY', 'ABR_ONLY']
+      
+      - name: confidence_score
+        description: "Match confidence score (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      
+      - name: match_confidence
+        description: "Match confidence level"
+        tests:
+          - accepted_values:
+              values: ['High', 'Medium', 'Low']
+              config:
+                where: "data_source = 'MERGED'"
+  
+  - name: fct_match_statistics
+    description: "Aggregated matching statistics and metrics"
+    columns:
+      - name: total_web_companies
+        description: "Total companies extracted from Common Crawl"
+        tests:
+          - not_null
+      
+      - name: total_abr_entities
+        description: "Total entities from ABR"
+        tests:
+          - not_null
+      
+      - name: total_matches
+        description: "Total matched pairs"
+        tests:
+          - not_null
+      
+      - name: match_rate_percent
+        description: "Percentage of web companies matched"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+

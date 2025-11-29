@@ -1,0 +1,52 @@
+# Australia Company ETL - dbt Project Configuration
+name: 'australia_company_etl'
+version: '1.0.0'
+config-version: 2
+
+profile: 'australia_company_etl'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Model configurations
+models:
+  australia_company_etl:
+    # Staging models
+    staging:
+      +materialized: view
+      +schema: staging
+    
+    # Intermediate models
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+    
+    # Mart models (final)
+    marts:
+      +materialized: table
+      +schema: marts
+
+# Test configurations
+tests:
+  australia_company_etl:
+    +severity: error
+
+# Variables
+vars:
+  # Matching thresholds
+  fuzzy_match_threshold: 0.75
+  high_confidence_threshold: 0.90
+  
+  # Data quality thresholds
+  max_null_percentage: 10
+  min_abn_validity_rate: 95
+

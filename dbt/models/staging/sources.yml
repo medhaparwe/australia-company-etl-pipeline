@@ -1,0 +1,59 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw data tables from ETL pipeline"
+    database: companydb
+    schema: public
+    
+    tables:
+      - name: web_companies
+        description: "Companies extracted from Common Crawl WET files"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: url
+            description: "Website URL"
+          - name: company_name
+            description: "Extracted company name"
+          - name: industry
+            description: "Extracted industry"
+          - name: raw_text
+            description: "Raw webpage text"
+        
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+      
+      - name: abr_entities
+        description: "Australian Business Register entities"
+        columns:
+          - name: abn
+            description: "Australian Business Number (primary key)"
+          - name: entity_name
+            description: "Legal entity name"
+          - name: entity_type
+            description: "Entity type code"
+          - name: entity_status
+            description: "Active/Cancelled status"
+          - name: state
+            description: "State code"
+          - name: postcode
+            description: "Business postcode"
+          - name: start_date
+            description: "Registration date"
+      
+      - name: entity_match_results
+        description: "Entity matching results"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: crawl_name
+            description: "Company name from Common Crawl"
+          - name: abr_name
+            description: "Entity name from ABR"
+          - name: abn
+            description: "Matched ABN"
+          - name: final_score
+            description: "Match confidence score"
+
