@@ -493,6 +493,9 @@ def match_companies_spark(
     # Filter by threshold
     matched = matched.filter(col("fuzzy_score") >= fuzzy_threshold)
     
+    # Add final_score (same as fuzzy_score when not using LLM)
+    matched = matched.withColumn("final_score", col("fuzzy_score"))
+    
     # Select relevant columns
     result = matched.select(
         col("cc.company_name").alias("crawl_name"),
@@ -500,6 +503,7 @@ def match_companies_spark(
         col("abr.entity_name").alias("abr_name"),
         col("abr.abn"),
         col("fuzzy_score"),
+        col("final_score"),
         col("abr.state"),
         col("abr.postcode"),
         col("abr.start_date")
