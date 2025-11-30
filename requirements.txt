@@ -40,6 +40,9 @@ uvicorn>=0.27.0
 loguru>=0.7.0
 tqdm>=4.66.0
 
+# Retry & Resilience
+tenacity>=8.2.0
+
 # Testing
 pytest>=7.4.0
 pytest-cov>=4.1.0

@@ -142,83 +142,10 @@ def download_abr_bulk(
     return all_xml_files
 
 
-def create_sample_abr_data(
-    output_path: str = "data/raw/abr/sample_abr.xml",
-    num_records: int = 100
-) -> str:
-    """
-    Create sample ABR data for testing.
-    
-    Args:
-        output_path: Output file path
-        num_records: Number of sample records
-        
-    Returns:
-        Path to created file
-    """
-    import random
-    from datetime import datetime, timedelta
-    
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    
-    states = ["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]
-    entity_types = ["PRV", "PUB", "IND", "TRT", "OIE"]
-    statuses = ["Active", "Cancelled"]
-    
-    company_names = [
-        "Tech Solutions", "Digital Services", "Construction Group",
-        "Mining Corp", "Consulting Partners", "Financial Services",
-        "Healthcare Systems", "Retail Holdings", "Manufacturing Industries",
-        "Transport Logistics", "Energy Solutions", "Agricultural Enterprises"
-    ]
-    
-    xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
-    xml_content.append('<ABRBulkExtract>')
-    
-    for i in range(num_records):
-        # Generate random ABN (11 digits)
-        abn = ''.join([str(random.randint(0, 9)) for _ in range(11)])
-        
-        # Random company name
-        base_name = random.choice(company_names)
-        name = f"{base_name} {random.choice(['Australia', 'AU', ''])} Pty Ltd".strip()
-        
-        # Random state and postcode
-        state = random.choice(states)
-        postcode = str(random.randint(1000, 9999))
-        
-        # Random entity type and status
-        entity_type = random.choice(entity_types)
-        status = random.choice(statuses)
-        
-        # Random start date
-        start_date = datetime.now() - timedelta(days=random.randint(365, 3650))
-        
-        xml_content.append(f'''  <ABRRecord>
-    <ABN>{abn}</ABN>
-    <EntityName>{name}</EntityName>
-    <EntityType>{entity_type}</EntityType>
-    <EntityStatus>{status}</EntityStatus>
-    <MainBusinessAddress>
-      <State>{state}</State>
-      <Postcode>{postcode}</Postcode>
-    </MainBusinessAddress>
-    <ABNStatusEffectiveFrom>{start_date.strftime("%Y-%m-%d")}</ABNStatusEffectiveFrom>
-  </ABRRecord>''')
-    
-    xml_content.append('</ABRBulkExtract>')
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(xml_content))
-    
-    logger.info(f"Created sample ABR data: {output_path}")
-    return output_path
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
-    # Create sample data for testing
-    sample_file = create_sample_abr_data(num_records=100)
-    print(f"Created sample file: {sample_file}")
+    # Download ABR bulk data
+    xml_files = download_abr_bulk()
+    print(f"Downloaded {len(xml_files)} XML files")
 

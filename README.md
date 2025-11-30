@@ -4,6 +4,9 @@
 
 A production-grade ETL pipeline for extracting, transforming, and matching Australian company data from multiple sources.
 
+This ETL pipeline is built in modular Python for transparency, simplicity, and local reproducibility.
+It uses Apache Spark for scalable distributed processing.
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -168,7 +171,7 @@ result = matcher.match_companies(
 
 | Scenario | Records | LLM Calls | Estimated Cost |
 |----------|---------|-----------|----------------|
-| Sample run | 1,000 | 50 | $0.01 |
+| Small run | 1,000 | 50 | $0.01 |
 | Medium run | 100,000 | 5,000 | $5.00 |
 | Full run | 200,000 | 10,000 | $10.00 |
 
@@ -229,7 +232,7 @@ This pipeline solves the challenge of matching company information from:
 
 ## 🚀 Quick Start
 
-### Option 1: Run Without Database (Fastest)
+### Option 1: Run Without Database
 
 ```bash
 # Clone and setup
@@ -248,8 +251,8 @@ venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run with sample data (no database required)
-python src/pipeline.py --sample --skip-load --max-records 100
+# Run pipeline (skip database loading)
+python src/pipeline.py --skip-load --max-records 1000
 ```
 
 **Expected Output:**
@@ -258,22 +261,23 @@ python src/pipeline.py --sample --skip-load --max-records 100
 ==================================================
 STEP 1: EXTRACT
 ==================================================
-Extracted 100 Common Crawl records
-Extracted 100 ABR records
+Downloading Common Crawl WET files in parallel...
+Extracted 1000 Common Crawl records
+Extracted 1000 ABR records
 ==================================================
 STEP 2: TRANSFORM
 ==================================================
-Cleaned CC data: 95 records
-Cleaned ABR data: 98 records
+Cleaned CC data: 950 records
+Cleaned ABR data: 980 records
 ==================================================
 STEP 3: ENTITY MATCHING
 ==================================================
-Found 42 matches
+Found 420 matches
 Average match score: 87.50%
 ==================================================
 PIPELINE COMPLETED SUCCESSFULLY
-Duration: 2.35 seconds
-Matches found: 42
+Duration: 45.35 seconds
+Matches found: 420
 ==================================================
 ```
 
@@ -286,18 +290,44 @@ docker-compose up -d postgres
 # Wait for database to be ready
 sleep 5
 
-# Run full pipeline
-python src/pipeline.py --sample --max-records 1000
+# Run full pipeline with parallel processing
+python src/pipeline.py --workers 8 --max-records 10000
 
 # View results in database
 docker-compose exec postgres psql -U postgres -d companydb -c "SELECT * FROM unified_companies LIMIT 10;"
 ```
 
-### Option 3: Using Make (Linux/Mac)
+### Option 3: Large-Scale Processing (TB-scale CommonCrawl)
+
+For processing large datasets (100K+ records):
+
+```bash
+# Install dependencies
+pip install pyspark rapidfuzz
+
+# Large dataset with specific number of workers
+python src/pipeline.py --workers 16 --max-records 1000000
+
+# Use existing downloaded files (skip download)
+python src/pipeline.py --skip-download --workers 8
+```
+
+**CLI Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--workers` | Number of parallel workers | Auto-detected |
+| `--max-records` | Maximum records to process | All |
+| `--skip-download` | Use existing downloaded files | `False` |
+| `--skip-load` | Skip loading to database | `False` |
+| `--llm` | Enable LLM-based matching | `False` |
+| `--config` | Path to configuration file | `config/pipeline_config.yaml` |
+
+### Option 4: Using Make (Linux/Mac)
 
 ```bash
 make install      # Install dependencies
-make run          # Run with sample data
+make run          # Run pipeline
 make test         # Run tests
 make docker-up    # Start Docker services
 ```
@@ -423,12 +453,8 @@ print(f'Downloaded {len(files)} files')
 # Download the latest XML bulk extract ZIP file
 # Extract to: data/raw/abr/
 
-# Option 2: Using provided sample data generator (for testing)
-python -c "
-from src.ingest.download_abr import create_sample_abr_data
-create_sample_abr_data('data/raw/abr/abr_bulk.xml', num_records=100000)
-print('Created sample ABR data with 100,000 records')
-"
+# Note: ABR bulk extract must be downloaded manually from data.gov.au
+# The pipeline will automatically process any XML files in data/raw/abr/
 ```
 
 ### Step 5: Run Full Production Pipeline
@@ -1145,6 +1171,34 @@ export POSTGRES_PASSWORD=your_password
 export OPENAI_API_KEY=sk-your-api-key
 ```
 
+### Retry & Resilience Configuration
+
+The pipeline uses `tenacity` for automatic retry with exponential backoff:
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `MAX_RETRY_ATTEMPTS` | 3 | Maximum retry attempts before failing |
+| `RETRY_MIN_WAIT` | 4 seconds | Minimum wait between retries |
+| `RETRY_MAX_WAIT` | 10 seconds | Maximum wait between retries |
+
+**Retry-enabled operations:**
+
+| Method | Retry Type | Handles |
+|--------|------------|---------|
+| `extract()` | Network/IO | Connection timeouts, file I/O errors |
+| `transform()` | Processing | Memory errors, parsing failures |
+| `match()` | Network/IO | LLM API timeouts, rate limits |
+| `load()` | Database | Connection drops, deadlocks |
+
+**Example retry behavior:**
+```
+Attempt 1: Failed (ConnectionError)
+Wait: 4 seconds (exponential backoff)
+Attempt 2: Failed (TimeoutError)
+Wait: 8 seconds (exponential backoff)
+Attempt 3: Success ✓
+```
+
 ---
 
 ## 📖 API Reference
@@ -1159,7 +1213,7 @@ pipeline = ETLPipeline(config_path="config/pipeline_config.yaml")
 
 # Run with options
 stats = pipeline.run(
-    use_sample_data=True,   # Use sample data for testing
+    skip_download=False,    # Set True to use existing files
     use_llm=False,          # Enable LLM verification
     max_records=1000,       # Limit records processed
     skip_load=False         # Skip database loading
@@ -1254,7 +1308,7 @@ def test_validate_abn():
 
 ```bash
 # Run with debug logging
-python src/pipeline.py --sample --max-records 10 2>&1 | tee debug.log
+python src/pipeline.py --max-records 100 --skip-load 2>&1 | tee debug.log
 ```
 
 ---
@@ -1265,7 +1319,7 @@ python src/pipeline.py --sample --max-records 10 2>&1 | tee debug.log
 |--------|-------|
 | Common Crawl records | ~200,000 |
 | ABR records | ~3,000,000 |
-| Processing time (sample) | ~5 seconds |
+| Processing time (1K records) | ~45 seconds |
 | Processing time (full) | ~2-4 hours |
 | Match accuracy | ~95% |
 | LLM API calls | ~5,000 (edge cases only) |

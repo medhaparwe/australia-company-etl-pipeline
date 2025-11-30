@@ -284,16 +284,21 @@ def parse_abr_to_spark(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
-    # Example usage
+    # Example usage - parse ABR XML files from data/raw/abr
+    from pathlib import Path
+    
     parser = ABRParser()
+    abr_dir = Path("data/raw/abr")
+    xml_files = list(abr_dir.glob("*.xml"))
     
-    sample_file = "data/raw/abr/sample_abr.xml"
-    
-    for i, entity in enumerate(parser.parse_file(sample_file, max_records=10)):
-        print(f"\n--- Record {i+1} ---")
-        print(f"ABN: {entity.abn}")
-        print(f"Name: {entity.entity_name}")
-        print(f"Type: {entity.entity_type}")
-        print(f"Status: {entity.entity_status}")
-        print(f"State: {entity.state}")
+    if xml_files:
+        for i, entity in enumerate(parser.parse_file(str(xml_files[0]), max_records=10)):
+            print(f"\n--- Record {i+1} ---")
+            print(f"ABN: {entity.abn}")
+            print(f"Name: {entity.entity_name}")
+            print(f"Type: {entity.entity_type}")
+            print(f"Status: {entity.entity_status}")
+            print(f"State: {entity.state}")
+    else:
+        print("No ABR XML files found in data/raw/abr/")
 

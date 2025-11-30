@@ -145,7 +145,9 @@ def download_wet_files(
     crawl_id: str = "CC-MAIN-2025-10",
     output_dir: str = "data/raw/commoncrawl",
     max_files: int = 10,
-    partial: bool = False
+    partial: bool = False,
+    parallel: bool = True,
+    max_workers: Optional[int] = None
 ) -> List[str]:
     """
     Download multiple WET files from a Common Crawl release.
@@ -155,6 +157,8 @@ def download_wet_files(
         output_dir: Local output directory
         max_files: Maximum number of files to download
         partial: If True, download only partial files (for testing)
+        parallel: If True, download files in parallel (recommended for TB-scale)
+        max_workers: Number of parallel download workers (auto-detected if None)
         
     Returns:
         List of downloaded file paths
@@ -165,6 +169,16 @@ def download_wet_files(
         logger.warning("No WET paths found")
         return []
     
+    if parallel and len(paths) > 1:
+        # Use parallel downloading for large batches
+        return download_wet_files_parallel(
+            paths, 
+            output_dir=output_dir, 
+            partial=partial,
+            max_workers=max_workers
+        )
+    
+    # Sequential download for small batches or when parallel is disabled
     downloaded = []
     
     for path in paths:
@@ -177,6 +191,81 @@ def download_wet_files(
             downloaded.append(result)
     
     logger.info(f"Downloaded {len(downloaded)} files")
+    return downloaded
+
+
+def download_wet_files_parallel(
+    wet_paths: List[str],
+    output_dir: str = "data/raw/commoncrawl",
+    partial: bool = False,
+    max_workers: Optional[int] = None
+) -> List[str]:
+    """
+    Download multiple WET files in parallel using thread pool.
+    
+    Optimized for TB-scale CommonCrawl data downloads.
+    Uses threads (I/O-bound) with configurable concurrency.
+    
+    Args:
+        wet_paths: List of WET file paths from Common Crawl
+        output_dir: Local output directory
+        partial: If True, download only partial files
+        max_workers: Number of parallel workers (default: 4x CPU cores, max 32)
+        
+    Returns:
+        List of successfully downloaded file paths
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import multiprocessing as mp
+    
+    if max_workers is None:
+        # I/O-bound: use more workers than CPU cores
+        max_workers = min(mp.cpu_count() * 4, 32)
+    
+    total = len(wet_paths)
+    downloaded = []
+    failed = []
+    
+    logger.info(f"Starting parallel download of {total} WET files with {max_workers} workers")
+    
+    def download_single(wet_path: str) -> Optional[str]:
+        """Download a single WET file."""
+        if partial:
+            return download_wet_partial(wet_path, output_dir=output_dir)
+        else:
+            return download_wet_file(wet_path, output_dir=output_dir)
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all download tasks
+        future_to_path = {
+            executor.submit(download_single, path): path 
+            for path in wet_paths
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_path):
+            path = future_to_path[future]
+            
+            try:
+                result = future.result()
+                if result:
+                    downloaded.append(result)
+                else:
+                    failed.append(path)
+            except Exception as e:
+                logger.error(f"Download failed for {path}: {e}")
+                failed.append(path)
+            
+            # Progress logging
+            completed = len(downloaded) + len(failed)
+            if completed % 10 == 0 or completed == total:
+                logger.info(f"Download progress: {completed}/{total} ({len(downloaded)} successful)")
+    
+    logger.info(f"Parallel download complete: {len(downloaded)}/{total} successful")
+    
+    if failed:
+        logger.warning(f"Failed downloads: {len(failed)}")
+    
     return downloaded
 
 

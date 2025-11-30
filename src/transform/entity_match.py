@@ -250,24 +250,177 @@ class EntityMatcher:
         return intersection / union
 
 
+def _match_block_worker(args: tuple) -> List[Dict[str, Any]]:
+    """
+    Worker function for parallel block matching.
+    
+    Args:
+        args: Tuple of (block_key, cc_rows, abr_rows, fuzzy_threshold)
+        
+    Returns:
+        List of match result dictionaries
+    """
+    block_key, cc_rows, abr_rows, fuzzy_threshold = args
+    
+    # Import fuzz inside worker to avoid pickling issues
+    try:
+        from rapidfuzz import fuzz
+        use_rapidfuzz = True
+    except ImportError:
+        use_rapidfuzz = False
+    
+    def compute_fuzzy(name1: str, name2: str) -> float:
+        if not name1 or not name2:
+            return 0.0
+        if use_rapidfuzz:
+            return fuzz.token_sort_ratio(name1, name2) / 100.0
+        # Jaccard fallback
+        set1 = set(name1.lower().split())
+        set2 = set(name2.lower().split())
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        return intersection / union if union > 0 else 0.0
+    
+    matches = []
+    
+    for cc_row in cc_rows:
+        cc_name = cc_row.get('normalized_name', '')
+        if not cc_name:
+            continue
+        
+        best_match = None
+        best_score = 0.0
+        
+        for abr_row in abr_rows:
+            abr_name = abr_row.get('normalized_name', '')
+            if not abr_name:
+                continue
+            
+            fuzzy_score = compute_fuzzy(cc_name, abr_name)
+            
+            if fuzzy_score >= fuzzy_threshold and fuzzy_score > best_score:
+                best_score = fuzzy_score
+                best_match = {
+                    'crawl_name': cc_row.get('company_name', ''),
+                    'crawl_url': cc_row.get('url', ''),
+                    'abr_name': abr_row.get('entity_name', ''),
+                    'abn': abr_row.get('abn', ''),
+                    'fuzzy_score': fuzzy_score,
+                    'llm_score': None,
+                    'final_score': fuzzy_score,
+                    'match_method': 'fuzzy',
+                    'state': abr_row.get('state'),
+                    'postcode': abr_row.get('postcode'),
+                    'start_date': str(abr_row.get('start_date', ''))
+                }
+        
+        if best_match:
+            matches.append(best_match)
+    
+    return matches
+
+
+def match_companies_parallel(
+    crawl_df: pd.DataFrame,
+    abr_df: pd.DataFrame,
+    fuzzy_threshold: float = 0.75,
+    max_workers: Optional[int] = None
+) -> pd.DataFrame:
+    """
+    Match companies using parallel processing (multiprocessing).
+    
+    Much faster than sequential iterrows() for large datasets.
+    Processes each block in parallel using ProcessPoolExecutor.
+    
+    Args:
+        crawl_df: Common Crawl DataFrame with block_key, normalized_name
+        abr_df: ABR DataFrame with block_key, normalized_name, abn
+        fuzzy_threshold: Minimum match score
+        max_workers: Number of parallel workers (auto-detected if None)
+        
+    Returns:
+        DataFrame of matched records
+    """
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor
+    
+    if max_workers is None:
+        max_workers = mp.cpu_count()
+    
+    logger.info(f"Matching {len(crawl_df)} CC records with {len(abr_df)} ABR records using {max_workers} workers")
+    
+    # Group by block key
+    cc_blocks = crawl_df.groupby('block_key')
+    abr_blocks = abr_df.groupby('block_key')
+    
+    # Prepare tasks for parallel processing
+    tasks = []
+    for block_key, cc_group in cc_blocks:
+        try:
+            abr_group = abr_blocks.get_group(block_key)
+        except KeyError:
+            continue
+        
+        # Convert to list of dicts for pickling
+        cc_rows = cc_group.to_dict('records')
+        abr_rows = abr_group.to_dict('records')
+        
+        tasks.append((block_key, cc_rows, abr_rows, fuzzy_threshold))
+    
+    logger.info(f"Processing {len(tasks)} blocks in parallel")
+    
+    # Process blocks in parallel
+    all_matches = []
+    ctx = mp.get_context('spawn')
+    
+    with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as executor:
+        for block_matches in executor.map(_match_block_worker, tasks):
+            all_matches.extend(block_matches)
+    
+    logger.info(f"Found {len(all_matches)} total matches")
+    
+    if not all_matches:
+        return pd.DataFrame()
+    
+    return pd.DataFrame(all_matches)
+
+
 def match_companies(
     crawl_df: pd.DataFrame,
     abr_df: pd.DataFrame,
     fuzzy_threshold: float = 0.75,
-    use_llm: bool = False
+    use_llm: bool = False,
+    parallel: bool = True,
+    max_workers: Optional[int] = None
 ) -> pd.DataFrame:
     """
-    Convenience function to match companies and return DataFrame.
+    Match companies and return DataFrame.
+    
+    For large datasets (>10K records), uses parallel processing automatically.
     
     Args:
         crawl_df: Common Crawl DataFrame
         abr_df: ABR DataFrame
         fuzzy_threshold: Minimum match score
-        use_llm: Whether to use LLM verification
+        use_llm: Whether to use LLM verification (disables parallel)
+        parallel: Enable parallel processing (default: True)
+        max_workers: Number of parallel workers (auto-detected if None)
         
     Returns:
         DataFrame of matched records
     """
+    # Use parallel processing for large datasets when LLM is not needed
+    PARALLEL_THRESHOLD = 1000  # Use parallel if > 1000 CC records
+    
+    if parallel and not use_llm and len(crawl_df) > PARALLEL_THRESHOLD:
+        logger.info("Using parallel matching for large dataset")
+        return match_companies_parallel(
+            crawl_df, abr_df,
+            fuzzy_threshold=fuzzy_threshold,
+            max_workers=max_workers
+        )
+    
+    # Fall back to sequential matching (supports LLM)
     matcher = EntityMatcher(
         fuzzy_threshold=fuzzy_threshold,
         use_llm=use_llm
