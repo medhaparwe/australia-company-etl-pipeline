@@ -93,48 +93,31 @@ class ABRParser:
     def _parse_record(self, elem: ET.Element) -> Optional[ABREntity]:
         """Parse a single ABR record element."""
         try:
-            # Extract ABN
-            abn = self._get_text(elem, 'ABN')
-            if not abn:
+            # Extract ABN (text content of ABN element)
+            abn_elem = elem.find('ABN')
+            if abn_elem is None or not abn_elem.text:
                 return None
+            abn = abn_elem.text.strip()
             
-            # Extract entity name (try multiple possible tags)
-            entity_name = (
-                self._get_text(elem, 'EntityName') or
-                self._get_text(elem, 'MainName') or
-                self._get_text(elem, 'Name') or
-                self._get_text(elem, 'BusinessName')
-            )
+            # Extract ABN status from attribute
+            entity_status = abn_elem.get('status')
             
+            # Extract status date from ABN attribute
+            start_date = abn_elem.get('ABNStatusFromDate')
+            
+            # Extract entity name - handle different entity types
+            entity_name = self._extract_entity_name(elem)
             if not entity_name:
                 return None
             
-            # Extract other fields
-            entity_type = self._get_text(elem, 'EntityType')
-            entity_status = (
-                self._get_text(elem, 'EntityStatus') or
-                self._get_text(elem, 'Status')
+            # Extract entity type
+            entity_type = (
+                self._get_text(elem, 'EntityType/EntityTypeText') or
+                self._get_text(elem, 'EntityType/EntityTypeInd')
             )
             
-            # Extract address components
-            state = (
-                self._get_text(elem, 'MainBusinessAddress/State') or
-                self._get_text(elem, 'Address/State') or
-                self._get_text(elem, 'State')
-            )
-            
-            postcode = (
-                self._get_text(elem, 'MainBusinessAddress/Postcode') or
-                self._get_text(elem, 'Address/Postcode') or
-                self._get_text(elem, 'Postcode')
-            )
-            
-            # Extract start date
-            start_date = (
-                self._get_text(elem, 'ABNStatusEffectiveFrom') or
-                self._get_text(elem, 'RecordDate') or
-                self._get_text(elem, 'StartDate')
-            )
+            # Extract address components from MainEntity or LegalEntity
+            state, postcode = self._extract_address(elem)
             
             return ABREntity(
                 abn=self._format_abn(abn),
@@ -149,6 +132,73 @@ class ABRParser:
         except Exception as e:
             logger.debug(f"Error parsing record: {e}")
             return None
+    
+    def _extract_entity_name(self, elem: ET.Element) -> Optional[str]:
+        """Extract entity name from various possible locations."""
+        # Try MainEntity (for companies)
+        main_entity = elem.find('MainEntity')
+        if main_entity is not None:
+            # Non-individual name (companies)
+            name = self._get_text(main_entity, 'NonIndividualName/NonIndividualNameText')
+            if name:
+                return name
+        
+        # Try LegalEntity (for individuals/sole traders)
+        legal_entity = elem.find('LegalEntity')
+        if legal_entity is not None:
+            # Non-individual name in LegalEntity
+            name = self._get_text(legal_entity, 'NonIndividualName/NonIndividualNameText')
+            if name:
+                return name
+            
+            # Individual name - construct from parts
+            ind_name = legal_entity.find('IndividualName')
+            if ind_name is not None:
+                name_parts = []
+                # Get all given names
+                for given in ind_name.findall('GivenName'):
+                    if given.text:
+                        name_parts.append(given.text.strip())
+                # Get family name
+                family = ind_name.find('FamilyName')
+                if family is not None and family.text:
+                    name_parts.append(family.text.strip())
+                if name_parts:
+                    return ' '.join(name_parts)
+        
+        # Fallback to other possible locations
+        return (
+            self._get_text(elem, 'EntityName') or
+            self._get_text(elem, 'MainName/NonIndividualNameText') or
+            self._get_text(elem, 'Name')
+        )
+    
+    def _extract_address(self, elem: ET.Element) -> tuple:
+        """Extract state and postcode from address."""
+        state = None
+        postcode = None
+        
+        # Try MainEntity address
+        paths_to_try = [
+            'MainEntity/BusinessAddress/AddressDetails',
+            'LegalEntity/BusinessAddress/AddressDetails',
+            'BusinessAddress/AddressDetails',
+            'AddressDetails',
+        ]
+        
+        for path in paths_to_try:
+            addr = elem.find(path)
+            if addr is not None:
+                state_elem = addr.find('State')
+                postcode_elem = addr.find('Postcode')
+                if state_elem is not None and state_elem.text:
+                    state = state_elem.text.strip()
+                if postcode_elem is not None and postcode_elem.text:
+                    postcode = postcode_elem.text.strip()
+                if state or postcode:
+                    break
+        
+        return state, postcode
     
     def _get_text(self, elem: ET.Element, path: str) -> Optional[str]:
         """Get text content from element path."""
@@ -173,6 +223,7 @@ class ABRParser:
         
         # Try common date formats
         formats = [
+            '%Y%m%d',      # ABR format: 20211015
             '%Y-%m-%d',
             '%d/%m/%Y',
             '%Y/%m/%d',
@@ -181,7 +232,7 @@ class ABRParser:
         
         for fmt in formats:
             try:
-                dt = datetime.strptime(date_str[:10], fmt)
+                dt = datetime.strptime(date_str[:10] if fmt != '%Y%m%d' else date_str[:8], fmt)
                 return dt.strftime('%Y-%m-%d')
             except ValueError:
                 continue
