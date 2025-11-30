@@ -56,6 +56,9 @@ from src.common.parallel import (
     get_optimal_workers,
 )
 
+# PySpark types for explicit schemas
+from pyspark.sql.types import StructType, StructField, StringType
+
 
 # Configure logging
 logging.basicConfig(
@@ -384,9 +387,30 @@ class ETLPipeline:
     
     def _records_to_dataframe(self, records: list, source: str):
         """Convert list of records to Spark DataFrame."""
+        # Define explicit schemas to handle empty datasets
+        ABR_SCHEMA = StructType([
+            StructField("abn", StringType(), False),
+            StructField("entity_name", StringType(), False),
+            StructField("entity_type", StringType(), True),
+            StructField("entity_status", StringType(), True),
+            StructField("state", StringType(), True),
+            StructField("postcode", StringType(), True),
+            StructField("start_date", StringType(), True),
+        ])
+        
+        CC_SCHEMA = StructType([
+            StructField("url", StringType(), True),
+            StructField("domain", StringType(), True),
+            StructField("company_name", StringType(), True),
+            StructField("industry", StringType(), True),
+            StructField("raw_text", StringType(), True),
+        ])
+        
+        schema = ABR_SCHEMA if source == "abr" else CC_SCHEMA
+        
         if not records:
-            return self.spark.createDataFrame([], schema=None)
-        return self.spark.createDataFrame(records)
+            return self.spark.createDataFrame([], schema=schema)
+        return self.spark.createDataFrame(records, schema=schema)
     
     def _get_row_count(self, df) -> int:
         """Get row count from Spark DataFrame."""

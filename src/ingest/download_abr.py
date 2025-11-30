@@ -17,9 +17,32 @@ ABR_DATASET_URL = "https://data.gov.au/data/dataset/abn-bulk-extract"
 
 # Example direct download URLs (these may change)
 ABR_SAMPLE_URLS = [
-    # These are example URLs - actual URLs need to be fetched from data.gov.au
-    "https://data.gov.au/data/dataset/abn-bulk-extract/resource/ABR_PUBLIC_20250101.xml.zip"
+    "https://data.gov.au/data/dataset/5bd7fcab-e315-42cb-8daf-50b7efc2027e/resource/0ae4d427-6fa8-4d40-8e76-c6909b5a071b/download/public_split_1_10.zip"
 ]
+
+
+def is_valid_zip(file_path: str) -> bool:
+    """
+    Check if a file is a valid ZIP archive by verifying its magic bytes.
+    
+    Args:
+        file_path: Path to the file to check
+        
+    Returns:
+        True if the file appears to be a valid ZIP file
+    """
+    ZIP_MAGIC_BYTES = [
+        b'PK\x03\x04',  # Standard ZIP
+        b'PK\x05\x06',  # Empty ZIP
+        b'PK\x07\x08',  # Spanned ZIP
+    ]
+    
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(4)
+            return any(header.startswith(magic) for magic in ZIP_MAGIC_BYTES)
+    except Exception:
+        return False
 
 
 def download_file(
@@ -44,14 +67,26 @@ def download_file(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     if output_path.exists():
-        logger.info(f"File already exists: {output_path}")
-        return str(output_path)
+        # Validate existing file is actually a valid ZIP
+        if filename.endswith('.zip') and not is_valid_zip(str(output_path)):
+            logger.warning(f"Existing file is not a valid ZIP, removing: {output_path}")
+            output_path.unlink()
+        else:
+            logger.info(f"File already exists: {output_path}")
+            return str(output_path)
     
     logger.info(f"Downloading: {url}")
     
     try:
         response = requests.get(url, stream=True, timeout=600)
         response.raise_for_status()
+        
+        # Check content-type to detect HTML error pages
+        content_type = response.headers.get('content-type', '')
+        if 'text/html' in content_type.lower() and filename.endswith('.zip'):
+            logger.error(f"Server returned HTML instead of ZIP file (likely a redirect or error page)")
+            logger.error(f"URL may be invalid or requires authentication: {url}")
+            return None
         
         total_size = int(response.headers.get('content-length', 0))
         
@@ -61,6 +96,21 @@ def download_file(
                     if chunk:
                         f.write(chunk)
                         pbar.update(len(chunk))
+        
+        # Validate the downloaded file is actually a ZIP
+        if filename.endswith('.zip') and not is_valid_zip(str(output_path)):
+            logger.error(f"Downloaded file is not a valid ZIP archive: {output_path}")
+            logger.error("The server may have returned an error page instead of the actual file")
+            # Log first 500 bytes to help diagnose
+            try:
+                with open(output_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    preview = f.read(500)
+                    if '<html' in preview.lower() or '<!doctype' in preview.lower():
+                        logger.error("Downloaded content appears to be HTML (likely an error page)")
+            except Exception:
+                pass
+            output_path.unlink()
+            return None
         
         logger.info(f"Downloaded: {output_path}")
         return str(output_path)
