@@ -438,22 +438,35 @@ def match_companies_spark(
     crawl_df,
     abr_df,
     spark_session,
-    fuzzy_threshold: float = 0.75
+    fuzzy_threshold: float = 0.75,
+    use_llm: bool = False,
+    llm_threshold_min: float = 0.60,
+    llm_model: str = "gpt-4o-mini",
+    fuzzy_weight: float = 0.70,
+    llm_weight: float = 0.30
 ):
     """
     Match companies using PySpark for distributed processing.
+    
+    Uses LLM matching for records where fuzzy score is below threshold
+    but above llm_threshold_min (uncertain matches).
     
     Args:
         crawl_df: Spark DataFrame from Common Crawl
         abr_df: Spark DataFrame from ABR
         spark_session: SparkSession
-        fuzzy_threshold: Minimum match score
+        fuzzy_threshold: Minimum fuzzy match score for direct match
+        use_llm: Whether to use LLM for uncertain matches
+        llm_threshold_min: Minimum fuzzy score to consider for LLM verification
+        llm_model: OpenAI model to use for LLM matching
+        fuzzy_weight: Weight for fuzzy score in hybrid scoring
+        llm_weight: Weight for LLM score in hybrid scoring
         
     Returns:
         Spark DataFrame of matches
     """
-    from pyspark.sql.functions import udf, col, broadcast
-    from pyspark.sql.types import FloatType
+    from pyspark.sql.functions import udf, col, broadcast, lit
+    from pyspark.sql.types import FloatType, StringType, StructType, StructField
     
     # Register fuzzy matching UDF
     # Import must happen inside UDF to work in worker processes
@@ -490,23 +503,126 @@ def match_companies_spark(
         fuzzy_score_udf(col("cc.normalized_name"), col("abr.normalized_name"))
     )
     
-    # Filter by threshold
-    matched = matched.filter(col("fuzzy_score") >= fuzzy_threshold)
-    
-    # Add final_score (same as fuzzy_score when not using LLM)
-    matched = matched.withColumn("final_score", col("fuzzy_score"))
-    
-    # Select relevant columns
-    result = matched.select(
+    # Select relevant columns with fuzzy scores
+    scored_matches = matched.select(
         col("cc.company_name").alias("crawl_name"),
         col("cc.url").alias("crawl_url"),
+        col("cc.industry").alias("industry"),
         col("abr.entity_name").alias("abr_name"),
         col("abr.abn"),
         col("fuzzy_score"),
-        col("final_score"),
         col("abr.state"),
         col("abr.postcode"),
         col("abr.start_date")
+    )
+    
+    # High confidence matches (above threshold) - no LLM needed
+    high_confidence = scored_matches.filter(col("fuzzy_score") >= fuzzy_threshold)
+    high_confidence = high_confidence.withColumn("llm_score", lit(None).cast(FloatType()))
+    high_confidence = high_confidence.withColumn("final_score", col("fuzzy_score"))
+    high_confidence = high_confidence.withColumn("match_method", lit("fuzzy"))
+    
+    if use_llm:
+        # Uncertain matches (between llm_threshold_min and fuzzy_threshold)
+        uncertain_matches = scored_matches.filter(
+            (col("fuzzy_score") >= llm_threshold_min) & 
+            (col("fuzzy_score") < fuzzy_threshold)
+        )
+        
+        uncertain_count = uncertain_matches.count()
+        
+        if uncertain_count > 0:
+            logger.info(f"Found {uncertain_count} uncertain matches, using LLM for verification")
+            
+            # Collect uncertain matches to driver for LLM processing
+            # (LLM API calls cannot be done in Spark workers)
+            uncertain_pdf = uncertain_matches.toPandas()
+            
+            # Initialize LLM matcher
+            llm_matcher = LLMMatcher(model=llm_model)
+            
+            if llm_matcher.is_available():
+                llm_scores = []
+                final_scores = []
+                match_methods = []
+                
+                for idx, row in uncertain_pdf.iterrows():
+                    # Call LLM for each uncertain match
+                    llm_result = llm_matcher.match_companies(
+                        {
+                            'name': row['crawl_name'],
+                            'url': row['crawl_url'],
+                            'industry': row.get('industry', '')
+                        },
+                        {
+                            'entity_name': row['abr_name'],
+                            'abn': row['abn'],
+                            'state': row.get('state', ''),
+                            'postcode': row.get('postcode', '')
+                        }
+                    )
+                    
+                    llm_score = llm_result.score
+                    fuzzy_score = row['fuzzy_score']
+                    
+                    # Compute weighted final score
+                    final_score = (fuzzy_weight * fuzzy_score) + (llm_weight * llm_score)
+                    
+                    llm_scores.append(llm_score)
+                    final_scores.append(final_score)
+                    match_methods.append("hybrid")
+                    
+                    if (idx + 1) % 10 == 0:
+                        logger.info(f"LLM processed {idx + 1}/{uncertain_count} uncertain matches")
+                
+                uncertain_pdf['llm_score'] = llm_scores
+                uncertain_pdf['final_score'] = final_scores
+                uncertain_pdf['match_method'] = match_methods
+                
+                # Filter to only keep matches above final threshold
+                uncertain_pdf = uncertain_pdf[uncertain_pdf['final_score'] >= fuzzy_threshold]
+                
+                logger.info(f"LLM rescued {len(uncertain_pdf)} matches from uncertain candidates")
+                
+                if len(uncertain_pdf) > 0:
+                    # Convert back to Spark DataFrame
+                    llm_enhanced = spark_session.createDataFrame(uncertain_pdf)
+                    
+                    # Union high confidence and LLM-enhanced matches
+                    # Ensure column order matches
+                    result_columns = [
+                        "crawl_name", "crawl_url", "industry", "abr_name", "abn",
+                        "fuzzy_score", "state", "postcode", "start_date",
+                        "llm_score", "final_score", "match_method"
+                    ]
+                    
+                    result = high_confidence.select(*result_columns).union(
+                        llm_enhanced.select(*result_columns)
+                    )
+                else:
+                    result = high_confidence
+            else:
+                logger.warning("LLM matcher not available, using fuzzy matching only")
+                result = high_confidence
+        else:
+            logger.info("No uncertain matches found, using fuzzy matching only")
+            result = high_confidence
+    else:
+        result = high_confidence
+    
+    # Select final columns (drop industry column used for LLM context)
+    result = result.select(
+        "crawl_name",
+        "crawl_url",
+        "abr_name",
+        "abn",
+        "fuzzy_score",
+        "llm_score",
+        "final_score",
+        "match_method",
+        "state",
+        "postcode",
+        "start_date"
     )
     
     return result

@@ -74,8 +74,11 @@ POSTGRES_PASSWORD=your_secure_password_here
 ### 3. Start All Services
 
 ```bash
-# Start PostgreSQL, Spark, and ETL pipeline
+# Start PostgreSQL, Spark, pgAdmin, and ETL pipeline
 docker-compose up -d
+
+# Or start specific services (without running the ETL pipeline)
+docker-compose up -d postgres spark-master spark-worker pgadmin
 
 # View logs
 docker-compose logs -f
@@ -92,6 +95,7 @@ docker-compose ps
 # company_etl_postgres        Up (healthy)
 # company_etl_spark_master    Up (healthy)
 # company_etl_spark_worker    Up
+# company_etl_pgadmin         Up
 # company_etl_pipeline        Up
 ```
 
@@ -102,6 +106,24 @@ docker-compose ps
 | **Spark Web UI** | http://localhost:8080 | N/A |
 | **pgAdmin** | http://localhost:8081 | admin@admin.com / admin123 |
 | **PostgreSQL** | localhost:5432 | postgres / postgres123 |
+
+### 6. Configure pgAdmin to Connect to PostgreSQL
+
+After accessing pgAdmin at http://localhost:8081:
+
+1. **Login** with email `admin@admin.com` and password `admin123`
+2. Right-click **Servers** → **Register** → **Server...**
+3. In the **General** tab:
+   - Name: `Company ETL Database`
+4. In the **Connection** tab:
+   - Host name/address: `postgres` (the Docker service name)
+   - Port: `5432`
+   - Maintenance database: `companydb`
+   - Username: `postgres`
+   - Password: `postgres123`
+5. Click **Save**
+
+You should now see the `companydb` database with all the pipeline tables.
 
 ---
 
@@ -186,8 +208,8 @@ docker-compose exec etl ls -lh data/raw/abr/
 ### Step 4: Start Infrastructure Services
 
 ```bash
-# Start only database and Spark (not ETL pipeline yet)
-docker-compose up -d postgres spark-master spark-worker
+# Start database, Spark, and pgAdmin (not ETL pipeline yet)
+docker-compose up -d postgres spark-master spark-worker pgadmin
 
 # Wait for services to be healthy
 docker-compose ps
@@ -197,6 +219,9 @@ docker-compose exec postgres psql -U postgres -d companydb -c "SELECT version();
 
 # Verify Spark is ready
 curl http://localhost:8080
+
+# Verify pgAdmin is ready (accessible at http://localhost:8081)
+curl http://localhost:8081
 ```
 
 ### Step 5: Initialize Database Schema
@@ -219,12 +244,13 @@ docker-compose exec postgres psql -U postgres -d companydb -c "\dt"
 
 ### Docker Compose Services
 
-The `docker-compose.yml` defines four main services:
+The `docker-compose.yml` defines five main services:
 
 1. **postgres** - PostgreSQL 15 database
 2. **spark-master** - Apache Spark master node
 3. **spark-worker** - Apache Spark worker node
 4. **etl** - ETL pipeline container
+5. **pgadmin** - pgAdmin 4 web interface for database management (http://localhost:8081)
 
 ### Customizing Resources
 
@@ -519,9 +545,7 @@ CREATE INDEX IF NOT EXISTS idx_match_results_abn ON entity_match_results(abn);
 
 ```bash
 # Run with more workers
-docker-compose run --rm etl python src/pipeline.py \
-  --workers 16 \
-  --max-records 200000
+docker-compose run --rm etl python src/pipeline.py  --workers 16 --max-records 1000
 ```
 
 ---
@@ -817,6 +841,9 @@ Before deploying to production:
 ```bash
 # Start all services
 docker-compose up -d
+
+# Start infrastructure services only (without ETL pipeline)
+docker-compose up -d postgres spark-master spark-worker pgadmin
 
 # Stop all services
 docker-compose down

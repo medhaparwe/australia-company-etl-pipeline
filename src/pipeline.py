@@ -447,6 +447,8 @@ class ETLPipeline:
         Perform entity matching between CC and ABR data using Spark.
         
         Uses distributed join with broadcast for TB-scale processing.
+        When use_llm=True, uses LLM for uncertain matches (fuzzy score
+        below threshold but above minimum).
         
         Retries up to 3 times with exponential backoff on matching errors.
         """
@@ -463,16 +465,34 @@ class ETLPipeline:
         matching_config = self.config.get('matching', {})
         fuzzy_threshold = matching_config.get('fuzzy', {}).get('threshold', 0.75)
         
+        # LLM config
+        llm_config = matching_config.get('llm', {})
+        llm_threshold_min = llm_config.get('min_score_for_llm', 0.60)
+        llm_model = llm_config.get('model', 'gpt-4o-mini')
+        
+        # Weights for hybrid scoring
+        weights_config = matching_config.get('weights', {})
+        fuzzy_weight = weights_config.get('fuzzy', 0.70)
+        llm_weight = weights_config.get('llm', 0.30)
+        
         cc_count = self._get_row_count(self.cc_data)
         abr_count = self._get_row_count(self.abr_data)
         logger.info(f"Matching {cc_count} CC records with {abr_count} ABR records using Spark")
         
-        # Spark: Distributed matching
+        if use_llm:
+            logger.info(f"LLM matching enabled (model: {llm_model}, min_score: {llm_threshold_min})")
+        
+        # Spark: Distributed matching with optional LLM for uncertain matches
         self.matches = match_companies_spark(
             self.cc_data,
             self.abr_data,
             self.spark,
-            fuzzy_threshold=fuzzy_threshold
+            fuzzy_threshold=fuzzy_threshold,
+            use_llm=use_llm,
+            llm_threshold_min=llm_threshold_min,
+            llm_model=llm_model,
+            fuzzy_weight=fuzzy_weight,
+            llm_weight=llm_weight
         )
         
         match_count = self._get_row_count(self.matches)
