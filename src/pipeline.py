@@ -164,9 +164,16 @@ class ETLPipeline:
     def spark(self):
         """Get Spark session (lazy initialization)."""
         if self._spark is None:
+            spark_config = self.config.get("spark", {})
+            print("spark config", spark_config)
+            # Get master URL from config, or use environment variable, or default to local
+            master = spark_config.get("master")
+            # Remove master from config dict before passing to get_spark_session
+            spark_config_without_master = {k: v for k, v in spark_config.items() if k != "master"}
             self._spark = get_spark_session(
                 app_name=f"AustraliaCompanyETL-{self.run_id}",
-                config=self.config.get("spark", {})
+                master=master,
+                config=spark_config_without_master
             )
         return self._spark
     

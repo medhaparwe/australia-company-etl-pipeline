@@ -61,6 +61,10 @@ Thumbs.db
 # Spark
 spark-warehouse/
 metastore_db/
+derby.log
+
+# Hadoop (Windows winutils.exe)
+hadoop/
 
 # Coverage
 .coverage

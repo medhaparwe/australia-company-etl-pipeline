@@ -86,31 +86,37 @@ class CommonCrawlParser:
         
         try:
             with gzip.open(file_path, 'rb') as stream:
-                for record in ArchiveIterator(stream):
-                    if max_records and count >= max_records:
-                        break
-                    
-                    # WET files use 'conversion' record type
-                    if record.rec_type != 'conversion':
-                        continue
-                    
-                    url = record.rec_headers.get_header('WARC-Target-URI')
-                    
-                    # Filter for Australian domains
-                    if not self._should_process(url):
-                        continue
-                    
-                    # Read content
-                    try:
-                        text = record.content_stream().read().decode('utf-8', errors='ignore')
-                    except Exception:
-                        continue
-                    
-                    # Extract company info
-                    company = self._extract_company_info(url, text)
-                    if company:
-                        count += 1
-                        yield company
+                try:
+                    for record in ArchiveIterator(stream):
+                        if max_records and count >= max_records:
+                            break
+                        
+                        # WET files use 'conversion' record type
+                        if record.rec_type != 'conversion':
+                            continue
+                        
+                        url = record.rec_headers.get_header('WARC-Target-URI')
+                        
+                        # Filter for Australian domains
+                        if not self._should_process(url):
+                            continue
+                        
+                        # Read content
+                        try:
+                            text = record.content_stream().read().decode('utf-8', errors='ignore')
+                        except Exception:
+                            continue
+                        
+                        # Extract company info
+                        company = self._extract_company_info(url, text)
+                        if company:
+                            count += 1
+                            yield company
+                except EOFError:
+                    # Handle truncated gzip files (partial downloads)
+                    logger.warning(f"Truncated gzip file detected (partial download?): {file_path}")
+                    logger.info(f"Successfully parsed {count} records before truncation")
+                    return
                         
         except Exception as e:
             logger.error(f"Error parsing with warcio: {e}")
@@ -127,34 +133,46 @@ class CommonCrawlParser:
         
         try:
             with gzip.open(file_path, 'rt', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    line = line.rstrip('\n')
-                    
-                    # Check for WARC header
-                    if line.startswith('WARC-Target-URI:'):
-                        # Process previous record
-                        if current_url and current_content:
-                            if max_records and count >= max_records:
-                                break
-                            
-                            text = '\n'.join(current_content)
-                            company = self._extract_company_info(current_url, text)
-                            if company:
-                                count += 1
-                                yield company
+                try:
+                    for line in f:
+                        line = line.rstrip('\n')
                         
-                        # Start new record
-                        current_url = line.replace('WARC-Target-URI:', '').strip()
-                        current_content = []
-                        continue
-                    
-                    # Skip other headers
-                    if line.startswith('WARC-') or line.startswith('Content-'):
-                        continue
-                    
-                    # Accumulate content
-                    if current_url:
-                        current_content.append(line)
+                        # Check for WARC header
+                        if line.startswith('WARC-Target-URI:'):
+                            # Process previous record
+                            if current_url and current_content:
+                                if max_records and count >= max_records:
+                                    break
+                                
+                                text = '\n'.join(current_content)
+                                company = self._extract_company_info(current_url, text)
+                                if company:
+                                    count += 1
+                                    yield company
+                            
+                            # Start new record
+                            current_url = line.replace('WARC-Target-URI:', '').strip()
+                            current_content = []
+                            continue
+                        
+                        # Skip other headers
+                        if line.startswith('WARC-') or line.startswith('Content-'):
+                            continue
+                        
+                        # Accumulate content
+                        if current_url:
+                            current_content.append(line)
+                            
+                except EOFError as e:
+                    # Handle truncated gzip files gracefully - yield what we have so far
+                    logger.warning(f"Truncated gzip file detected (partial download?): {file_path}")
+                    if current_url and current_content:
+                        text = '\n'.join(current_content)
+                        company = self._extract_company_info(current_url, text)
+                        if company:
+                            yield company
+                    logger.info(f"Successfully parsed {count} records before truncation")
+                    return
                 
                 # Process last record
                 if current_url and current_content:

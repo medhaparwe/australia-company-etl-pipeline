@@ -1303,6 +1303,70 @@ def test_validate_abn():
 | `BadGzipFile: Not a gzipped file` | File download incomplete, retry |
 | `psycopg2.OperationalError: connection refused` | Start PostgreSQL: `docker-compose up -d postgres` |
 | `openai.AuthenticationError` | Set `OPENAI_API_KEY` environment variable |
+| `UnsupportedClassVersionError` (Java version mismatch) | Use Docker Spark (see below) |
+
+### Using Docker Spark (Java Version Issues)
+
+If you encounter Java version errors like:
+```
+UnsupportedClassVersionError: class file version 61.0 (requires Java 17)
+```
+
+This means your local Java version is too old (Spark 3.5 requires Java 17+). **Solution: Use Docker Spark**
+
+#### Option A: Run Everything in Docker (Recommended)
+
+```bash
+# Start all services including Spark cluster
+docker-compose up -d
+
+# The ETL container will automatically connect to Docker Spark
+# Monitor Spark UI at http://localhost:8080
+```
+
+#### Option B: Run Python Locally, Connect to Docker Spark
+
+```bash
+# 1. Start only Spark cluster (not the ETL container)
+docker-compose up -d spark-master spark-worker
+
+# 2. Set environment variable to connect to Docker Spark
+# Windows PowerShell:
+$env:SPARK_MASTER_URL="spark://localhost:7077"
+
+# Windows CMD:
+set SPARK_MASTER_URL=spark://localhost:7077
+
+# Linux/Mac:
+export SPARK_MASTER_URL=spark://localhost:7077
+
+# 3. Run pipeline locally (will use Docker Spark)
+python src/pipeline.py --max-records 10000
+
+# 4. Monitor Spark UI at http://localhost:8080
+```
+
+#### Verify Spark Connection
+
+```bash
+# Check Spark master is running
+docker-compose ps spark-master
+
+# View Spark logs
+docker-compose logs spark-master
+
+# Access Spark Web UI
+# Open browser to http://localhost:8080
+```
+
+#### Configuration
+
+The Spark master URL can be set via:
+1. **Environment variable** `SPARK_MASTER_URL` (highest priority)
+2. **Config file** `config/pipeline_config.yaml` → `spark.master`
+3. **Default**: `local[*]` (uses local Spark if available)
+
+**Note**: When running from host machine, use `spark://localhost:7077`. When running inside Docker, use `spark://spark-master:7077` (already configured in docker-compose.yml).
 
 ### Debug Mode
 

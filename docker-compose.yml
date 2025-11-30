@@ -20,6 +20,33 @@ services:
       timeout: 5s
       retries: 5
 
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: company_etl_spark_master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./data:/opt/spark/data
+      - spark_warehouse:/opt/spark/warehouse
+
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: company_etl_spark_worker
+    command:
+      ["/opt/spark/bin/spark-class",
+       "org.apache.spark.deploy.worker.Worker",
+       "spark://spark-master:7077"]
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - ./data:/opt/spark/data
+      - spark_warehouse:/opt/spark/warehouse
+
   # ETL Pipeline
   etl:
     build:
@@ -29,6 +56,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      spark-master:
+        condition: service_healthy
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -36,6 +65,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres123
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SPARK_MASTER_URL=spark://spark-master:7077
     volumes:
       - ./data:/app/data
       - ./config:/app/config
@@ -49,10 +79,11 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin123
     ports:
-      - "8080:80"
+      - "8081:80"  # Changed from 8080 to avoid conflict with Spark UI
     depends_on:
       - postgres
 
 volumes:
   postgres_data:
+  spark_warehouse:
 

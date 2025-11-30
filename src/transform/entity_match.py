@@ -456,18 +456,26 @@ def match_companies_spark(
     from pyspark.sql.types import FloatType
     
     # Register fuzzy matching UDF
+    # Import must happen inside UDF to work in worker processes
     @udf(FloatType())
     def fuzzy_score_udf(name1, name2):
         if not name1 or not name2:
             return 0.0
-        if fuzz:
-            return float(fuzz.token_sort_ratio(name1, name2)) / 100.0
-        else:
-            set1 = set(name1.lower().split())
-            set2 = set(name2.lower().split())
-            intersection = len(set1 & set2)
-            union = len(set1 | set2)
-            return float(intersection / union) if union > 0 else 0.0
+        try:
+            # Try to import rapidfuzz in worker process
+            try:
+                from rapidfuzz import fuzz as rapidfuzz_module
+                return float(rapidfuzz_module.token_sort_ratio(name1, name2)) / 100.0
+            except ImportError:
+                # Fallback to Jaccard similarity if rapidfuzz not available
+                set1 = set(name1.lower().split())
+                set2 = set(name2.lower().split())
+                intersection = len(set1 & set2)
+                union = len(set1 | set2)
+                return float(intersection / union) if union > 0 else 0.0
+        except Exception:
+            # Return 0.0 on any error to prevent worker crashes
+            return 0.0
     
     # Join on block key
     matched = crawl_df.alias("cc").join(

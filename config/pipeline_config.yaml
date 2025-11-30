@@ -4,9 +4,9 @@
 paths:
   # Common Crawl settings
   commoncrawl:
-    crawl_id: "CC-MAIN-2025-10"
+    crawl_id: "CC-MAIN-2025-05"
     base_url: "https://data.commoncrawl.org/crawl-data"
-    wet_index_url: "https://data.commoncrawl.org/crawl-data/CC-MAIN-2025-10/wet.paths.gz"
+    wet_index_url: "https://data.commoncrawl.org/crawl-data/CC-MAIN-2025-05/wet.paths.gz"
     max_files: 10  # Limit for testing
     output_path: "data/processed/commoncrawl"
     
@@ -66,6 +66,9 @@ matching:
 # Spark Configuration
 spark:
   app_name: "AustraliaCompanyETL"
+  # Master URL: Use "local[*]" for local Spark, or "spark://spark-master:7077" for Docker Spark
+  # Can also be set via SPARK_MASTER_URL environment variable (takes precedence)
+  # Leave as null to use environment variable or default to local[*]
   master: "local[*]"
   driver_memory: "4g"
   executor_memory: "4g"

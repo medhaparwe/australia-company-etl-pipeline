@@ -16,6 +16,32 @@ logger = logging.getLogger(__name__)
 CC_BASE_URL = "https://data.commoncrawl.org"
 
 
+def validate_gzip_file(file_path: str) -> bool:
+    """
+    Validate that a gzip file is complete and not truncated.
+    
+    Args:
+        file_path: Path to gzip file
+        
+    Returns:
+        True if valid, False if truncated/corrupted
+    """
+    try:
+        with gzip.open(file_path, 'rb') as f:
+            # Read in chunks to avoid memory issues with large files
+            while True:
+                chunk = f.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+        return True
+    except EOFError:
+        logger.warning(f"Gzip file is truncated: {file_path}")
+        return False
+    except Exception as e:
+        logger.warning(f"Gzip file validation failed: {file_path} - {e}")
+        return False
+
+
 def get_wet_paths(crawl_id: str = "CC-MAIN-2025-10", limit: int = 10) -> List[str]:
     """
     Get list of WET file paths for a specific crawl.
@@ -51,15 +77,19 @@ def get_wet_paths(crawl_id: str = "CC-MAIN-2025-10", limit: int = 10) -> List[st
 def download_wet_file(
     wet_path: str,
     output_dir: str = "data/raw/commoncrawl",
-    chunk_size: int = 1024 * 1024  # 1MB chunks
+    chunk_size: int = 1024 * 1024,  # 1MB chunks
+    validate: bool = True,
+    max_retries: int = 3
 ) -> Optional[str]:
     """
-    Download a single WET file.
+    Download a single WET file with validation and retry support.
     
     Args:
         wet_path: Path to WET file on Common Crawl
         output_dir: Local output directory
         chunk_size: Download chunk size in bytes
+        validate: If True, validate gzip integrity after download
+        max_retries: Maximum number of retry attempts on failure
         
     Returns:
         Local file path if successful, None otherwise
@@ -71,35 +101,72 @@ def download_wet_file(
     # Create output directory
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Skip if already downloaded
+    # Skip if already downloaded and valid
     if output_path.exists():
-        logger.info(f"File already exists: {output_path}")
-        return str(output_path)
+        if validate:
+            if validate_gzip_file(str(output_path)):
+                logger.info(f"File already exists and is valid: {output_path}")
+                return str(output_path)
+            else:
+                logger.warning(f"Existing file is corrupted, re-downloading: {output_path}")
+                output_path.unlink()
+        else:
+            logger.info(f"File already exists: {output_path}")
+            return str(output_path)
     
-    logger.info(f"Downloading: {url}")
+    for attempt in range(1, max_retries + 1):
+        logger.info(f"Downloading (attempt {attempt}/{max_retries}): {url}")
+        
+        try:
+            response = requests.get(url, stream=True, timeout=300)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            
+            with open(output_path, 'wb') as f:
+                with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded_size += len(chunk)
+                            pbar.update(len(chunk))
+            
+            # Verify downloaded size matches expected
+            if total_size > 0 and downloaded_size != total_size:
+                logger.warning(f"Size mismatch: expected {total_size}, got {downloaded_size}")
+                if output_path.exists():
+                    output_path.unlink()
+                continue
+            
+            # Validate gzip integrity
+            if validate:
+                if validate_gzip_file(str(output_path)):
+                    logger.info(f"Downloaded and validated: {output_path}")
+                    return str(output_path)
+                else:
+                    logger.warning(f"Downloaded file failed validation (attempt {attempt})")
+                    if output_path.exists():
+                        output_path.unlink()
+                    continue
+            else:
+                logger.info(f"Downloaded: {output_path}")
+                return str(output_path)
+            
+        except Exception as e:
+            logger.error(f"Error downloading {url} (attempt {attempt}): {e}")
+            # Clean up partial download
+            if output_path.exists():
+                output_path.unlink()
+            
+            if attempt < max_retries:
+                import time
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.info(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
     
-    try:
-        response = requests.get(url, stream=True, timeout=300)
-        response.raise_for_status()
-        
-        total_size = int(response.headers.get('content-length', 0))
-        
-        with open(output_path, 'wb') as f:
-            with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        pbar.update(len(chunk))
-        
-        logger.info(f"Downloaded: {output_path}")
-        return str(output_path)
-        
-    except Exception as e:
-        logger.error(f"Error downloading {url}: {e}")
-        # Clean up partial download
-        if output_path.exists():
-            output_path.unlink()
-        return None
+    logger.error(f"Failed to download after {max_retries} attempts: {url}")
+    return None
 
 
 def download_wet_partial(
@@ -108,7 +175,14 @@ def download_wet_partial(
     output_dir: str = "data/raw/commoncrawl"
 ) -> Optional[str]:
     """
-    Download only the first N bytes of a WET file (for testing).
+    Download only the first N bytes of a WET file (for testing ONLY).
+    
+    WARNING: Partial downloads create TRUNCATED gzip files that will cause
+    'Compressed file ended before the end-of-stream marker' errors during parsing.
+    The parser will handle this gracefully and extract as many complete records
+    as possible, but some data will be lost.
+    
+    Use this only for quick testing - for production, download complete files.
     
     Args:
         wet_path: Path to WET file on Common Crawl
@@ -124,6 +198,11 @@ def download_wet_partial(
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
+    logger.warning(
+        f"Downloading PARTIAL file ({bytes_range} bytes). "
+        "This will create a truncated gzip that cannot be fully parsed. "
+        "Use full downloads for production."
+    )
     logger.info(f"Downloading first {bytes_range} bytes of: {url}")
     
     try:
