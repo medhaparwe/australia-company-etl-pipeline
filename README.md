@@ -18,6 +18,31 @@ Entity resolution pipeline matching
 
 ---
 
+## Run Report (without llm due to quota constrant)
+
+Raw Logs: [`rawlog.txt`](rawlog.txt)
+
+```
+==================================================
+PIPELINE STATISTICS
+==================================================
+  Workers: 8
+  run_id: b469d937
+  started_at: 2025-12-01T19:20:46.714628
+  status: completed
+  cc_extracted: 165
+  abr_extracted: 2000000
+  cc_cleaned: 85
+  abr_cleaned: 1999993
+  matches_found: 78
+  cc_loaded: 85
+  abr_loaded: 1999993
+  matches_loaded: 78
+  unified_loaded: 78
+  completed_at: 2025-12-01T19:35:12.176699
+  duration_seconds: 865.462086
+```
+
 ## Architecture
 
 ```
