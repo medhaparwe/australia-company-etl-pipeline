@@ -20,8 +20,8 @@ Entity resolution pipeline matching
 
 ## Run Report (without llm due to quota constrant)
 
-Raw Logs: [`rawlog.txt`](rawlog.txt)
-Actual Database Records and Screenshots (ss due to size constrant): [`actual_aws_db_exported_data`](actual_aws_db_exported_data)
+- Raw Logs: [`rawlog.txt`](rawlog.txt) <br/>
+- Actual Database Records and Screenshots (ss due to size constrant): [`actual_aws_db_exported_data`](actual_aws_db_exported_data)
 
 ```
 ==================================================
