@@ -1,10 +1,12 @@
-# 🇦🇺 Australia Company ETL Pipeline
+# Australia Company ETL Pipeline
 
-Entity resolution pipeline matching **Common Crawl** web data with **Australian Business Register (ABR)** using fuzzy matching + LLM verification.
+Entity resolution pipeline matching 
+**Common Crawl** web data with 
+**Australian Business Register (ABR)** using fuzzy matching + LLM verification.
 
 ---
 
-## 📊 Dataset Statistics
+## Dataset Statistics
 
 | Metric | Value |
 |--------|-------|
@@ -16,7 +18,7 @@ Entity resolution pipeline matching **Common Crawl** web data with **Australian 
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌──────────────────────────┐     ┌──────────────────────────┐
@@ -49,7 +51,7 @@ Entity resolution pipeline matching **Common Crawl** web data with **Australian 
 
 ---
 
-## 🗄️ Database Schema (DDL)
+## Database Schema (DDL)
 
 ```sql
 -- Source: Common Crawl
@@ -102,7 +104,7 @@ Full DDL: [`src/load/create_tables.sql`](src/load/create_tables.sql)
 
 ---
 
-## ⚙️ Technology Stack
+## Technology Stack
 
 | Component | Technology | Justification |
 |-----------|------------|---------------|
@@ -115,7 +117,7 @@ Full DDL: [`src/load/create_tables.sql`](src/load/create_tables.sql)
 
 ---
 
-## 🤖 AI Model: GPT-4o-mini
+## AI Model: GPT-4o-mini
 
 **Why GPT-4o-mini?**
 - **Cost**: ~$0.15/1M input tokens (vs $30 for GPT-4)
@@ -127,7 +129,7 @@ Full DDL: [`src/load/create_tables.sql`](src/load/create_tables.sql)
 
 ---
 
-## 🚀 Setup & Run
+## Setup & Run
 
 ```bash
 # 1. Clone & setup
@@ -161,7 +163,7 @@ cd dbt && dbt run && dbt test
 | `--config` | Add custom config file (default: config/pipeline_config.yaml) |
 ---
 
-## 📂 Code Structure
+## Code Structure
 
 ```
 src/
@@ -191,7 +193,7 @@ dbt/tests/
 
 ---
 
-## 🔧 Entity Matching Approach
+## Entity Matching Approach
 
 **3-Stage Pipeline:**
 
@@ -210,7 +212,7 @@ dbt/tests/
 
 ---
 
-## 🖥️ Development Environment
+## Development Environment
 
 - **IDE**: Cursor with Python extensions
 - **Python**: 3.10+

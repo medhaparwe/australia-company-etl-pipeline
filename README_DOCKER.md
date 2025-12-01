@@ -1,4 +1,4 @@
-# 🐳 Docker Production Deployment Guide
+# Docker Production Deployment Guide
 
 > **Production-ready Docker deployment** for the Australia Company ETL Pipeline
 
@@ -6,7 +6,7 @@ This guide covers deploying and running the ETL pipeline in production using Doc
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Prerequisites](#-prerequisites)
 - [Quick Start](#-quick-start)
@@ -21,7 +21,7 @@ This guide covers deploying and running the ETL pipeline in production using Doc
 
 ---
 
-## ✅ Prerequisites
+## Prerequisites
 
 ### System Requirements
 
@@ -40,7 +40,7 @@ This guide covers deploying and running the ETL pipeline in production using Doc
 
 ---
 
-## 🚀 Quick Start
+##Quick Start
 
 ### 1. Clone and Navigate
 
@@ -127,7 +127,7 @@ You should now see the `companydb` database with all the pipeline tables.
 
 ---
 
-## 🏭 Production Setup
+## Production Setup
 
 ### Step 1: Configure Environment Variables
 
@@ -240,7 +240,7 @@ docker-compose exec postgres psql -U postgres -d companydb -c "\dt"
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Docker Compose Services
 
@@ -292,7 +292,7 @@ matching:
 
 ---
 
-## 🏃 Running the Pipeline
+##Running the Pipeline
 
 ### Option 1: Run via Docker Compose (Recommended)
 
@@ -348,7 +348,7 @@ docker-compose run --rm etl python src/pipeline.py \
 
 ---
 
-## 📊 Monitoring & Logging
+## Monitoring & Logging
 
 ### View Logs
 
@@ -434,7 +434,7 @@ docker volume inspect task_postgres_data
 
 ---
 
-## 💾 Data Persistence
+## Data Persistence
 
 ### Volumes
 
@@ -487,7 +487,7 @@ print(f'Exported {len(df)} records')
 
 ---
 
-## 📈 Scaling & Performance
+## Scaling & Performance
 
 ### Increase Spark Resources
 
@@ -550,7 +550,7 @@ docker-compose run --rm etl python src/pipeline.py  --workers 16 --max-records 1
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -704,7 +704,7 @@ docker-compose up -d
 
 ---
 
-## 🎯 Production Best Practices
+## Production Best Practices
 
 ### 1. Security
 
@@ -816,7 +816,7 @@ jobs:
 
 ---
 
-## 📝 Production Checklist
+## Production Checklist
 
 Before deploying to production:
 
@@ -834,7 +834,7 @@ Before deploying to production:
 
 ---
 
-## 🚀 Quick Reference
+## Quick Reference
 
 ### Essential Commands
 
@@ -885,7 +885,7 @@ docker stats
 
 ---
 
-## 📚 Additional Resources
+## Additional Resources
 
 - [Main README](README.md) - Full project documentation
 - [Docker Documentation](https://docs.docker.com/)
@@ -895,7 +895,7 @@ docker stats
 
 ---
 
-## 🆘 Support
+## Support
 
 For issues or questions:
 
