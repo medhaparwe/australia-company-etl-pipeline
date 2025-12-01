@@ -6,18 +6,6 @@ Entity resolution pipeline matching
 
 ---
 
-## Dataset Statistics
-
-| Metric | Value |
-|--------|-------|
-| **Common Crawl Records** | ~200,000 Australian websites |
-| **ABR Entities** | ~3,000,000 business registrations |
-| **Match Rate** | ~82% |
-| **High Confidence Matches** | ~84% of matches (score ≥ 0.85) |
-| **LLM Verified** | ~5% (edge cases between 0.60-0.85) |
-
----
-
 ## Run Report (without llm due to quota constrant)
 
 - Raw Logs: [`rawlog.txt`](rawlog.txt) <br/>
