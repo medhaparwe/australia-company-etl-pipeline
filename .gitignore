@@ -41,7 +41,6 @@ data/raw/
 data/processed/
 data/output/
 *.parquet
-*.csv
 *.xml
 *.wet.gz
 *.warc.gz
