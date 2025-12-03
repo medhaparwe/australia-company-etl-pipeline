@@ -153,8 +153,8 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Configure
-update config/pipeline_config.yaml
-mkdir -p data/{raw,processed,output}
+# update config/pipeline_config.yaml // configure thresholds, models, and other required things in config file
+# export OPENAI_API_KEY=sk-your-openai-api-key-here // this is to export open ai key for llm matching
 
 # 3. Start Docker containers
 docker-compose up -d postgres spark-master spark-worker pgadmin
@@ -164,6 +164,8 @@ python src/pipeline.py --max-records 200000 --llm --workers 8
 
 # 5. Run dbt transformations
 cd dbt && dbt run && dbt test
+
+Note: you might need to use "sudo" if there are any permission issues or configure correct permission from root account
 ```
 
 **CLI Options:**
